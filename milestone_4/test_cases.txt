@@ -1,0 +1,224 @@
+# Robot Follower — Test Cases for Final Report
+# ================================================
+# Run each test from robot_follower_final using:
+#   python analyze.py --port COM3 --test <test_name> --dur <seconds>
+# Each test produces a CSV + PNG automatically.
+
+
+# ================================================================
+#  SETUP BEFORE ALL TESTS
+# ================================================================
+# 1. Flash robot_follower_final.ino to the Pico
+# 2. Place the follower robot on a flat surface
+# 3. Open analyze.py, set DESIRED_CM = 25.0 to match the Pico
+# 4. Install dependencies:  pip install pyserial matplotlib numpy
+# 5. Run each test exactly as described below
+
+
+# ================================================================
+#  TEST 1 — STEADY STATE HOLDING
+# ================================================================
+# Name:     Steady state accuracy
+# Command:  python analyze.py --port COM3 --test steady_state --dur 20
+#
+# Procedure:
+#   1. Hold an obstacle at exactly 25cm in front of the sensor
+#   2. Keep it perfectly still for 20 seconds
+#   3. Robot should try to hold position
+#
+# What to measure:
+#   - Steady-state error (should be < 1cm)
+#   - RMS error (should be < 1.5cm)
+#   - PWM oscillation (should be small, < 30)
+#
+# Expected good result:
+#   RMS < 1.0 cm,  steady-state error < 0.5 cm,  drift stays < 10 ticks
+#
+# What it shows:
+#   Controller accuracy at setpoint. Tests whether Ki is needed.
+#   If robot consistently stops 3cm short → increase Ki.
+#   If robot oscillates slowly → decrease Ki.
+
+
+# ================================================================
+#  TEST 2 — STEP RESPONSE (far to near)
+# ================================================================
+# Name:     Step response positive
+# Command:  python analyze.py --port COM3 --test step_far --dur 15
+#
+# Procedure:
+#   1. Hold obstacle at 50cm (or as far as your space allows)
+#   2. Start recording
+#   3. At t=3s, move obstacle to exactly 25cm and hold still
+#   4. Keep it there until recording ends
+#
+# What to measure:
+#   - Rise time (time to first reach 25cm ± 10%)
+#   - Overshoot (how far past 25cm it goes)
+#   - Settling time (when error stays within ±5% of 25cm)
+#   - Peak PWM (should approach 240)
+#
+# Expected good result:
+#   Rise time < 2s,  overshoot < 15%,  settling < 4s
+#
+# What it shows:
+#   How fast and cleanly the controller responds to a sudden change.
+#   Classic control theory step response — the main tuning benchmark.
+
+
+# ================================================================
+#  TEST 3 — STEP RESPONSE (near to far, robot reverses)
+# ================================================================
+# Name:     Step response reverse
+# Command:  python analyze.py --port COM3 --test step_reverse --dur 15
+#
+# Procedure:
+#   1. Hold obstacle at 25cm until robot settles
+#   2. At t=3s, suddenly move obstacle to 10cm and hold
+#   3. Robot should reverse to follow
+#
+# What to measure:
+#   - Undershoot (how far below 25cm it goes while reversing)
+#   - Rise time for negative step
+#   - Compare reverse PWM to forward PWM — should be asymmetric
+#     due to Kp_dist_neg (if implemented)
+#
+# Expected good result:
+#   Undershoot < 20%,  robot reverses within 1s
+#
+# What it shows:
+#   Asymmetric Kp effectiveness. Tests whether reverse gain is strong enough.
+
+
+# ================================================================
+#  TEST 4 — RAMP FOLLOWING (slow constant speed)
+# ================================================================
+# Name:     Ramp following slow
+# Command:  python analyze.py --port COM3 --test ramp_slow --dur 20
+#
+# Procedure:
+#   1. Start obstacle at 25cm
+#   2. Move it away at a slow, constant speed (~5cm/s) for 5 seconds
+#   3. Stop at ~50cm
+#   4. Hold for 5 seconds
+#   5. Move back toward robot at same speed to 25cm
+#
+# What to measure:
+#   - Tracking error during the ramp phase (should stay < 5cm)
+#   - IAE during ramp vs IAE during stationary
+#   - How quickly it catches up when you stop
+#
+# Expected good result:
+#   Tracking error < 5cm at 5cm/s ramp,  IAE ratio (ramp/static) < 5
+#
+# What it shows:
+#   Dynamic tracking performance. Real-world following scenario.
+
+
+# ================================================================
+#  TEST 5 — FAST STEP (sudden fast movement)
+# ================================================================
+# Name:     Fast step
+# Command:  python analyze.py --port COM3 --test fast_step --dur 15
+#
+# Procedure:
+#   1. Start at 25cm
+#   2. At t=3s, move obstacle very quickly to 60cm+ (or remove it)
+#   3. Observe robot chase at full speed
+#   4. At t=8s, bring obstacle back to 25cm quickly
+#
+# What to measure:
+#   - Does v_base jump to 240 immediately? (reactivity test)
+#   - Does it overshoot badly when obstacle returns?
+#   - Check filteredDist — does it update fast or lag?
+#
+# Expected good result:
+#   v_base = 240 within 1 reading of losing target,
+#   overshoot < 25% on return
+#
+# What it shows:
+#   No-obstacle chase behaviour and sensor filter speed.
+#   The 80cm threshold and EMA alpha directly affect this.
+
+
+# ================================================================
+#  TEST 6 — STRAIGHT LINE ALIGNMENT
+# ================================================================
+# Name:     Alignment test
+# Command:  python analyze.py --port COM3 --test alignment --dur 20
+#
+# Procedure:
+#   1. Place robot aimed straight at a wall 50cm away
+#   2. Start recording
+#   3. Robot will drive forward toward the wall
+#   4. Observe whether it veers left or right
+#   5. Watch the drift column in serial / graph
+#
+# What to measure:
+#   - tickDrift accumulation rate (should stay < 50 for straight line)
+#   - Whether pwm_L and pwm_R diverge significantly
+#   - Lateral deviation from straight line (measure physically with tape)
+#
+# Expected good result:
+#   drift stays within ±30 ticks,  robot stays within 5cm of straight line over 1m
+#
+# What it shows:
+#   Effectiveness of encoder-based alignment (Kp_align).
+
+
+# ================================================================
+#  TEST 7 — NOISE AND DISTURBANCE REJECTION
+# ================================================================
+# Name:     Disturbance rejection
+# Command:  python analyze.py --port COM3 --test disturbance --dur 20
+#
+# Procedure:
+#   1. Hold obstacle at 25cm until robot settles
+#   2. Briefly wave your hand in front of the sensor for 0.5s then remove it
+#      (this causes a false reading spike)
+#   3. Repeat 3 times at t=5, t=10, t=15
+#
+# What to measure:
+#   - How much does filteredDist spike on each disturbance?
+#   - How long does the controller take to recover?
+#   - Does the robot physically lurch?
+#
+# Expected good result:
+#   filteredDist spike < 5cm per hand wave,  recovery < 0.5s
+#
+# What it shows:
+#   EMA filter effectiveness. Whether 80cm threshold is catching bad readings.
+
+
+# ================================================================
+#  METRICS TABLE FOR REPORT
+# ================================================================
+# Collect the printed metrics from each test and fill this table:
+#
+# | Test                  | RMS (cm) | IAE | Overshoot% | Rise (s) | Settle (s) |
+# |-----------------------|----------|-----|------------|----------|------------|
+# | Steady state          |          |     |     —      |    —     |     —      |
+# | Step far→near         |          |     |            |          |            |
+# | Step near→far         |          |     |            |          |            |
+# | Ramp slow             |          |     |     —      |    —     |            |
+# | Fast step             |          |     |            |          |            |
+# | Alignment             |    —     |  —  |     —      |    —     |     —      |
+# | Disturbance           |          |     |     —      |    —     |            |
+#
+# Fill in "—" for metrics that don't apply to that test.
+# Lower RMS and IAE = better.  Lower overshoot and rise/settle = better.
+
+
+# ================================================================
+#  HOW TO COMPARE BEFORE/AFTER TUNING
+# ================================================================
+# Run TEST 2 (step response) with your current gains, save the CSV.
+# Change a gain (e.g. raise Kd).
+# Run TEST 2 again with a different --test tag.
+# Then replay both:
+#
+#   python analyze.py --csv data/step_far_before.csv
+#   python analyze.py --csv data/step_far_after.csv
+#
+# Compare the plots side by side. RMS and overshoot should improve.
+# This is the standard way to demonstrate gain tuning in a report.
